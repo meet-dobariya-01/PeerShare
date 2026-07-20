@@ -1,0 +1,3 @@
+# Ignore dataset directories
+Server/raw-img/
+Peer/downloads/
