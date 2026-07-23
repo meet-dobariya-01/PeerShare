@@ -33,6 +33,14 @@ public:
         int clientSocket,
         const string& filePath
     );
+
+    // Send a specific chunk of a file to the peer
+    bool sendChunk(
+        int clientSocket,
+        const string& filePath,
+        long long offset,
+        long long size
+    );
 };
 
 #endif

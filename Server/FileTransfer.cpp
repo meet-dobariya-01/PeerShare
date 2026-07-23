@@ -15,17 +15,26 @@ bool FileTransfer::sendMessage(
     const string& message
 )
 {
-    int bytesSent = send(
-        clientSocket,
-        message.c_str(),
-        message.length(),
-        0
-    );
+    int totalSent = 0;
+    int length = message.length();
+    const char* data = message.c_str();
 
-    if (bytesSent < 0)
+    while (totalSent < length)
     {
-        cerr << "ERROR: Failed to send message.\n";
-        return false;
+        int bytesSent = send(
+            clientSocket,
+            data + totalSent,
+            length - totalSent,
+            0
+        );
+
+        if (bytesSent < 0)
+        {
+            cerr << "ERROR: Failed to send message.\n";
+            return false;
+        }
+
+        totalSent += bytesSent;
     }
 
     return true;
@@ -104,22 +113,79 @@ bool FileTransfer::sendFile(
             break;
         }
 
-        int bytesSent = send(
-            clientSocket,
-            buffer,
-            bytesRead,
-            0
-        );
-
-        if (bytesSent < 0)
+        int totalSent = 0;
+        while (totalSent < bytesRead)
         {
-            cerr << "ERROR: Failed to send file data.\n";
-            inputFile.close();
-            return false;
+            int bytesSent = send(
+                clientSocket,
+                buffer + totalSent,
+                bytesRead - totalSent,
+                0
+            );
+
+            if (bytesSent < 0)
+            {
+                cerr << "ERROR: Failed to send file data.\n";
+                inputFile.close();
+                return false;
+            }
+
+            totalSent += bytesSent;
         }
     }
 
     inputFile.close();
 
+    return waitForACK(clientSocket);
+}
+
+// ==========================================
+// Send a specific chunk of a file
+// ==========================================
+bool FileTransfer::sendChunk(
+    int clientSocket,
+    const string& filePath,
+    long long offset,
+    long long size
+)
+{
+    ifstream inputFile(filePath, ios::binary);
+    if (!inputFile.is_open())
+    {
+        cerr << "ERROR: Unable to open file for chunking: " << filePath << endl;
+        return false;
+    }
+
+    // Seek to the start of the chunk
+    inputFile.seekg(offset, ios::beg);
+
+    char buffer[BUFFER_SIZE];
+    long long totalSentOverall = 0;
+
+    while (totalSentOverall < size)
+    {
+        long long bytesToRead = min((long long)BUFFER_SIZE, size - totalSentOverall);
+        inputFile.read(buffer, bytesToRead);
+        
+        streamsize bytesRead = inputFile.gcount();
+        if (bytesRead <= 0) break;
+
+        int totalSent = 0;
+        while (totalSent < bytesRead)
+        {
+            int bytesSent = send(clientSocket, buffer + totalSent, bytesRead - totalSent, 0);
+            if (bytesSent < 0)
+            {
+                cerr << "ERROR: Failed to send chunk data.\n";
+                inputFile.close();
+                return false;
+            }
+            totalSent += bytesSent;
+        }
+        
+        totalSentOverall += bytesRead;
+    }
+
+    inputFile.close();
     return waitForACK(clientSocket);
 }
