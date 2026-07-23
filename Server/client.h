@@ -38,6 +38,15 @@ public:
         const vector<PeerInfo>& availablePeers
     );
 
+    // Milestone 3.1: Query Tracker for hosts
+    struct HostInfo {
+        string ip;
+        int port;
+        string directory;
+    };
+
+    vector<HostInfo> queryTracker(const string& topic);
+
     vector<string> listFiles();
 
 private:

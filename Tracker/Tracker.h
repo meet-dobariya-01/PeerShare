@@ -35,6 +35,12 @@ public:
     // Search for a topic
     bool lookupTopic(string topicName);
 
+    // Check if topic exists
+    bool topicExists(string topicName);
+
+    // Get hosts for a topic
+    vector<Host> getHostsForTopic(string topicName);
+
     // Display complete database
     void displayDatabase();
 

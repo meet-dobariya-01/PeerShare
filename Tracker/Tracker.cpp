@@ -90,6 +90,22 @@ bool Tracker::lookupTopic(string topicName)
     return true;
 }
 
+// Check if a topic exists
+bool Tracker::topicExists(string topicName)
+{
+    return topicDatabase.find(topicName) != topicDatabase.end();
+}
+
+// Get hosts for a topic
+vector<Host> Tracker::getHostsForTopic(string topicName)
+{
+    if (topicExists(topicName))
+    {
+        return topicDatabase[topicName].getHostList();
+    }
+    return vector<Host>();
+}
+
 // Display complete database
 void Tracker::displayDatabase()
 {

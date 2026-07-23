@@ -29,6 +29,7 @@ void acceptClients(int serverSocket, Tracker& tracker);
 void handleClient(int clientSocket, Tracker& tracker);
 void handleRegister(int clientSocket, stringstream& ss, Tracker& tracker);
 void handleLookup(int clientSocket, stringstream& ss, Tracker& tracker);
+void handleQuery(int clientSocket, stringstream& ss, Tracker& tracker);
 void sendResponse(int clientSocket, const string& response);
 
 // ==========================================
@@ -218,6 +219,10 @@ void handleClient(int clientSocket, Tracker& tracker)
         {
             handleLookup(clientSocket, ss, tracker);
         }
+        else if (command == "QUERY")
+        {
+            handleQuery(clientSocket, ss, tracker);
+        }
         else if (command == "EXIT")
         {
             break;
@@ -319,5 +324,43 @@ void sendResponse(int clientSocket, const string& response)
     if (send(clientSocket, response.c_str(), response.length(), 0) < 0)
     {
         cerr << "ERROR: Failed to call send() to client socket.\n";
+    }
+}
+
+void handleQuery(int clientSocket, stringstream& ss, Tracker& tracker)
+{
+    string topic;
+    
+    if (ss >> topic)
+    {
+        bool exists = false;
+        vector<Host> hosts;
+        
+        {
+            lock_guard<mutex> lock(trackerMutex);
+            exists = tracker.topicExists(topic);
+            if (exists)
+            {
+                hosts = tracker.getHostsForTopic(topic);
+            }
+        }
+        
+        if (exists && !hosts.empty())
+        {
+            string response = to_string(hosts.size()) + "\n";
+            for (const Host& h : hosts)
+            {
+                response += h.getIPAddress() + " " + to_string(h.getPortNumber()) + " " + h.getDirectoryPath() + "\n";
+            }
+            sendResponse(clientSocket, response);
+        }
+        else
+        {
+            sendResponse(clientSocket, "0\n");
+        }
+    }
+    else
+    {
+        sendResponse(clientSocket, "INVALID COMMAND\n");
     }
 }

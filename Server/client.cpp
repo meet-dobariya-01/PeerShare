@@ -156,6 +156,78 @@ vector<string> Client::listFiles()
 }
 
 // ==========================================
+// Query Tracker for Topic Hosts (Milestone 3.1)
+// ==========================================
+vector<Client::HostInfo> Client::queryTracker(const string& topic)
+{
+    vector<HostInfo> hosts;
+
+    if (!sendMessage("QUERY " + topic + "\n"))
+    {
+        cerr << "ERROR: Failed to send QUERY command to Tracker.\n";
+        return hosts;
+    }
+
+    string numHostsStr = receiveMessage();
+    if (numHostsStr.empty())
+    {
+        cerr << "ERROR: Empty response from Tracker.\n";
+        return hosts;
+    }
+    
+    // Remove newline if present
+    if (!numHostsStr.empty() && numHostsStr.back() == '\n') numHostsStr.pop_back();
+
+    if (numHostsStr == "INVALID COMMAND")
+    {
+        cerr << "ERROR: Tracker did not recognize the QUERY command.\n";
+        return hosts;
+    }
+
+    int numHosts = 0;
+    try 
+    {
+        numHosts = stoi(numHostsStr);
+    } 
+    catch (...) 
+    {
+        cerr << "ERROR: Invalid host count received from Tracker.\n";
+        return hosts;
+    }
+
+    if (numHosts == 0)
+    {
+        cout << "Tracker Response: 0 hosts available for topic '" << topic << "'.\n";
+        return hosts;
+    }
+
+    cout << "\n----------------------------------------\n";
+    cout << "Tracker Response for topic '" << topic << "':\n";
+    cout << "Available Hosts: " << numHosts << "\n";
+
+    for (int i = 0; i < numHosts; ++i)
+    {
+        string hostLine = receiveMessage();
+        if (hostLine.empty())
+        {
+            cerr << "ERROR: Connection lost while reading host list.\n";
+            break;
+        }
+
+        stringstream ss(hostLine);
+        HostInfo info;
+        if (ss >> info.ip >> info.port >> info.directory)
+        {
+            hosts.push_back(info);
+            cout << " - " << info.ip << ":" << info.port << " [" << info.directory << "]\n";
+        }
+    }
+    cout << "----------------------------------------\n";
+
+    return hosts;
+}
+
+// ==========================================
 // Download File / Topic
 // ==========================================
 bool Client::downloadFile(const string& filename, const string& savePath)
