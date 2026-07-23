@@ -164,6 +164,7 @@ void Server::acceptClients()
 
         if (clientSocket < 0)
         {
+            lock_guard<mutex> lock(serverMutex);
             cerr << "ERROR: accept() failed.\n";
             continue;
         }
@@ -177,19 +178,33 @@ void Server::acceptClients()
             INET_ADDRSTRLEN
         );
 
-        cout << "\n----------------------------------------\n";
-        cout << "Peer Connected\n";
-        cout << "IP   : " << clientIP << endl;
-        cout << "Port : " << ntohs(clientAddress.sin_port) << endl;
-        cout << "----------------------------------------\n";
+        {
+            lock_guard<mutex> lock(serverMutex);
+            cout << "\n----------------------------------------\n";
+            cout << "Peer Connected\n";
+            cout << "IP   : " << clientIP << endl;
+            cout << "Port : " << ntohs(clientAddress.sin_port) << endl;
+            cout << "----------------------------------------\n";
+        }
 
-        thread peerThread(
-            &Server::handlePeer,
-            this,
-            clientSocket
-        );
+        try
+        {
+            thread peerThread(
+                &Server::handlePeer,
+                this,
+                clientSocket
+            );
 
-        peerThread.detach();
+            peerThread.detach();
+        }
+        catch (const system_error& e)
+        {
+            {
+                lock_guard<mutex> lock(serverMutex);
+                cerr << "ERROR: Failed to create thread: " << e.what() << "\n";
+            }
+            close(clientSocket);
+        }
     }
 }
 
@@ -228,6 +243,7 @@ void Server::handlePeer(int clientSocket)
         // Separate handling of network errors from graceful disconnects
         if (bytesReceived < 0)
         {
+            lock_guard<mutex> lock(serverMutex);
             cerr << "ERROR: recv() failed for peer " << peerIP << ":" << peerPort << "\n";
             break;
         }
@@ -253,8 +269,11 @@ void Server::handlePeer(int clientSocket)
             // Validate DOWNLOAD command requires a non-empty topic
             if (ss >> topic && !topic.empty())
             {
-                cout << "\nRequested Topic : " << topic << endl;
-                cout << "Client IP and Port: " << peerIP << ":" << peerPort << endl;
+                {
+                    lock_guard<mutex> lock(serverMutex);
+                    cout << "\nRequested Topic : " << topic << endl;
+                    cout << "Client IP and Port: " << peerIP << ":" << peerPort << endl;
+                }
 
                 sendTopic(
                     clientSocket,
@@ -276,8 +295,11 @@ void Server::handlePeer(int clientSocket)
             
             if (ss >> topic >> filename >> offset >> size)
             {
-                cout << "\nRequested Chunk : " << filename << " (Offset: " << offset << ", Size: " << size << ")" << endl;
-                cout << "Client IP and Port: " << peerIP << ":" << peerPort << endl;
+                {
+                    lock_guard<mutex> lock(serverMutex);
+                    cout << "\nRequested Chunk : " << filename << " (Offset: " << offset << ", Size: " << size << ")" << endl;
+                    cout << "Client IP and Port: " << peerIP << ":" << peerPort << endl;
+                }
 
                 string filePath = fileManager.getFilePath(topic, filename);
                 
@@ -293,10 +315,12 @@ void Server::handlePeer(int clientSocket)
                             {
                                 if (!fileTransfer.sendChunk(clientSocket, filePath, offset, size))
                                 {
+                                    lock_guard<mutex> lock(serverMutex);
                                     cout << "Chunk Transfer Failed\n";
                                 }
                                 else
                                 {
+                                    lock_guard<mutex> lock(serverMutex);
                                     cout << "Chunk Transfer Completed\n";
                                 }
                             }
@@ -333,10 +357,14 @@ void Server::handlePeer(int clientSocket)
         }
     }
 
-    cout << "Peer Disconnected (IP: " << peerIP << " Port: " << peerPort << ")\n";
+    {
+        lock_guard<mutex> lock(serverMutex);
+        cout << "Peer Disconnected (IP: " << peerIP << " Port: " << peerPort << ")\n";
+    }
 
     if (close(clientSocket) < 0)
     {
+        lock_guard<mutex> lock(serverMutex);
         cerr << "ERROR: Failed to close client socket.\n";
     }
 }
@@ -354,6 +382,7 @@ void Server::sendTopic(
     {
         if (!fileTransfer.sendMessage(clientSocket, "TOPIC NOT FOUND\n")) 
         {
+            lock_guard<mutex> lock(serverMutex);
             cout << "Transfer Failed\n";
         }
         return;
@@ -362,6 +391,7 @@ void Server::sendTopic(
     // Inform peer that topic exists
     if (!fileTransfer.sendMessage(clientSocket, "TOPIC FOUND\n"))
     {
+        lock_guard<mutex> lock(serverMutex);
         cout << "Transfer Failed\n";
         return;
     }
@@ -372,29 +402,41 @@ void Server::sendTopic(
     // Topic exists but contains zero files edge case
     if (files.empty())
     {
-        cout << "Topic '" << topic << "' has 0 files. Sending empty directory response.\n";
+        {
+            lock_guard<mutex> lock(serverMutex);
+            cout << "Topic '" << topic << "' has 0 files. Sending empty directory response.\n";
+        }
         
         if (!fileTransfer.sendMessage(clientSocket, "0\n"))
         {
+            lock_guard<mutex> lock(serverMutex);
             cout << "Transfer Failed\n";
             return;
         }
         
         if (!fileTransfer.sendMessage(clientSocket, "END\n"))
         {
+            lock_guard<mutex> lock(serverMutex);
             cout << "Transfer Failed\n";
             return;
         }
 
-        cout << "Transfer Completed\n";
+        {
+            lock_guard<mutex> lock(serverMutex);
+            cout << "Transfer Completed\n";
+        }
         return;
     }
 
-    cout << "Number of Files : " << files.size() << endl;
+    {
+        lock_guard<mutex> lock(serverMutex);
+        cout << "Number of Files : " << files.size() << endl;
+    }
 
     // Send number of files
     if (!fileTransfer.sendMessage(clientSocket, to_string(files.size()) + "\n"))
     {
+        lock_guard<mutex> lock(serverMutex);
         cout << "Transfer Failed\n";
         return;
     }
@@ -413,6 +455,7 @@ void Server::sendTopic(
     }
     catch (const runtime_error& e)
     {
+        lock_guard<mutex> lock(serverMutex);
         cout << "Transfer Failed\n";
         return;
     }
@@ -420,11 +463,15 @@ void Server::sendTopic(
     // Notify completion
     if (!fileTransfer.sendMessage(clientSocket, "END\n"))
     {
+        lock_guard<mutex> lock(serverMutex);
         cout << "Transfer Failed\n";
         return;
     }
 
-    cout << "Transfer Completed\n";
+    {
+        lock_guard<mutex> lock(serverMutex);
+        cout << "Transfer Completed\n";
+    }
 }
 
 // ==========================================
@@ -439,12 +486,15 @@ void Server::sendSingleFile(
     string filePath = fileManager.getFilePath(topic, fileName);
     long long fileSize = fileManager.getFileSize(filePath);
 
-    cout << "----------------------------------------\n";
-    cout << "Current File\n";
-    cout << "Sending : " << fileName << endl;
-    cout << "Filename : " << fileName << endl;
-    cout << "Size : " << fileSize << " bytes\n";
-    cout << "----------------------------------------\n";
+    {
+        lock_guard<mutex> lock(serverMutex);
+        cout << "----------------------------------------\n";
+        cout << "Current File\n";
+        cout << "Sending : " << fileName << endl;
+        cout << "Filename : " << fileName << endl;
+        cout << "Size : " << fileSize << " bytes\n";
+        cout << "----------------------------------------\n";
+    }
 
     // Send filename
     if (!fileTransfer.sendMessage(clientSocket, fileName + "\n"))
@@ -486,11 +536,15 @@ void Server::shutdownServer()
     {
         if (close(serverSocket) < 0)
         {
+            lock_guard<mutex> lock(serverMutex);
             cerr << "ERROR: Failed to close server socket.\n";
         }
         
         serverSocket = -1; // Reset to avoid double-close issues
 
-        cout << "\nServer Shutdown\n";
+        {
+            lock_guard<mutex> lock(serverMutex);
+            cout << "\nServer Shutdown\n";
+        }
     }
 }
