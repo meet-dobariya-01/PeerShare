@@ -19,6 +19,9 @@ public:
     // Check if a topic directory exists
     bool topicExists(const string& topic);
 
+    // Create a topic directory
+    bool createTopicDirectory(const string& topic);
+
     // Return all file names inside a topic directory
     vector<string> getFileList(const string& topic);
 

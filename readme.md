@@ -60,7 +60,7 @@ Workflow:
 ```text
 Peer
    │
-   │ LOOKUP Topic
+   │ QUERY Topic
    ▼
 Tracker
    │
@@ -68,7 +68,7 @@ Tracker
    ▼
 Peer
    │
-   │ GET_TOPIC
+   │ DOWNLOAD Topic
    ▼
 Server / Peer
    │
@@ -76,7 +76,7 @@ Server / Peer
    ▼
 Peer
    │
-   │ REGISTER
+   │ REGISTER_TOPIC
    ▼
 Tracker
 ```
@@ -88,19 +88,20 @@ Tracker
 ```text
 Topic-Based-P2P-File-Distribution/
 
-├── tracker/
-│   └── tracker.cpp
+├── Tracker/
+│   ├── Tracker.cpp / Tracker.h
+│   ├── Topic.cpp / Topic.h
+│   ├── Host.cpp / Host.h
+│   └── main.cpp
 │
-├── server/
-│   ├── server.cpp
+├── Server/
+│   ├── server.cpp / server.h
+│   ├── client.cpp / client.h      (Peer implementation)
+│   ├── Filemanager.cpp / FileManager.h
+│   ├── FileTransfer.cpp / FileTransfer.h
 │   └── raw-img/
 │
-├── peer/
-│   ├── peer.cpp
-│   └── downloads/
-│
-├── README.md
-└── FINAL.md
+└── readme.md
 ```
 
 ---
@@ -145,3 +146,139 @@ Topic-Based-P2P-File-Distribution/
 ## Objective
 
 The objective of this project is to demonstrate a tracker-based peer-to-peer file distribution system where peers cooperate in sharing topic directories instead of relying solely on a central server.
+
+---
+
+## How to Run
+
+### Step 1: Clone the Repository
+
+```bash
+git clone <repository-url>
+cd Topic-Based-P2P-File-Distribution
+```
+
+---
+
+### Step 2: Build the Tracker
+
+```bash
+cd Tracker
+g++ -std=c++17 *.cpp -o tracker -pthread
+```
+
+---
+
+### Step 3: Build the Server
+
+```bash
+cd ../Server
+g++ -std=c++17 server.cpp FileManager.cpp FileTransfer.cpp main.cpp -o server -pthread
+```
+
+---
+
+### Step 4: Build the Peer
+
+```bash
+g++ -std=c++17 client.cpp FileManager.cpp FileTransfer.cpp -o peer -pthread
+```
+
+> **Note:** If your project uses additional source files, include them in the compilation command accordingly.
+
+---
+
+### Step 5: Start the Tracker
+
+Open a terminal:
+
+```bash
+cd Tracker
+./tracker
+```
+
+---
+
+### Step 6: Start the Server
+
+Open a second terminal:
+
+```bash
+cd Server
+./server
+```
+
+The server will begin listening for peer requests.
+
+---
+
+### Step 7: Start Peer 1
+
+Open a third terminal:
+
+```bash
+cd Server
+./peer
+```
+
+Peer 1 can:
+- Query the Tracker for available topics.
+- Download a topic from the Server.
+- Register itself with the Tracker after a successful download.
+- Serve downloaded topics to other peers.
+
+---
+
+### Step 8: Start Peer 2
+
+Open a fourth terminal:
+
+```bash
+cd Server
+./peer
+```
+
+Peer 2 can:
+- Query the Tracker.
+- Receive both the Server and Peer 1 as available hosts.
+- Download the topic from either source.
+
+---
+
+### Expected Workflow
+
+```text
+Tracker
+   ▲
+   │
+   │ QUERY / REGISTER_TOPIC
+   │
+Peer 1 --------------------► Server
+   │                           │
+   │                           │
+   └──── Downloads Topic ◄─────┘
+   │
+   │ REGISTER_TOPIC
+   ▼
+Tracker
+
+Peer 2
+   │
+   │ QUERY
+   ▼
+Tracker
+   │
+   │ Host List (Server + Peer 1)
+   ▼
+Peer 2
+   │
+   │ DOWNLOAD
+   ▼
+Peer 1
+```
+
+---
+
+### Stopping the Application
+
+Press **Ctrl + C** in each terminal to stop the Tracker, Server, and Peer processes.

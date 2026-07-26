@@ -19,6 +19,23 @@ bool FileManager::topicExists(const string& topic)
 }
 
 // ==========================================
+// Create a topic directory
+// ==========================================
+bool FileManager::createTopicDirectory(const string& topic)
+{
+    string topicPath = rootDirectory + "/" + topic;
+    
+    try
+    {
+        return fs::create_directories(topicPath) || fs::exists(topicPath);
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
+// ==========================================
 // Return all file names inside a topic
 // ==========================================
 vector<string> FileManager::getFileList(const string& topic)

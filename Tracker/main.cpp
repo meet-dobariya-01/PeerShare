@@ -211,7 +211,7 @@ void handleClient(int clientSocket, Tracker& tracker)
         // If stringstream fails to extract a command, ignore and wait for next message
         if (!(ss >> command)) continue;
 
-        if (command == "REGISTER")
+        if (command == "REGISTER" || command == "REGISTER_TOPIC")
         {
             handleRegister(clientSocket, ss, tracker);
         }

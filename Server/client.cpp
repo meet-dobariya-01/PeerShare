@@ -1,5 +1,6 @@
 #include "client.h"
 #include "FileTransfer.h"
+#include "FileManager.h"
 #include <iostream>
 #include <fstream>
 #include <sys/socket.h>
@@ -225,6 +226,264 @@ vector<Client::HostInfo> Client::queryTracker(const string& topic)
     cout << "----------------------------------------\n";
 
     return hosts;
+}
+
+// ==========================================
+// Fetch Topic from an Available Host (Milestone 3.2)
+// ==========================================
+bool Client::fetchTopic(const string& topic, const string& baseSavePath)
+{
+    // 1. Query Tracker for available hosts
+    vector<HostInfo> hosts = queryTracker(topic);
+    
+    if (hosts.empty())
+    {
+        cerr << "ERROR: No hosts available for topic '" << topic << "'.\n";
+        return false;
+    }
+
+    // 2. Select the first host
+    HostInfo selectedHost = hosts[0];
+    cout << "\nSelected Host: " << selectedHost.ip << ":" << selectedHost.port << "\n";
+
+    // 3. Connect to the host using a temporary Client instance
+    Client hostClient(selectedHost.ip, selectedHost.port);
+    if (!hostClient.connectToServer())
+    {
+        cerr << "ERROR: Failed to connect to the selected host.\n";
+        return false;
+    }
+
+    // 4. Prepare local storage using FileManager
+    FileManager fm(baseSavePath);
+    if (!fm.createTopicDirectory(topic))
+    {
+        lock_guard<mutex> lock(peerMutex);
+        cerr << "ERROR: Failed to create local directory for topic storage.\n";
+        hostClient.disconnect();
+        return false;
+    }
+    
+    // Mark as downloading to prevent serving incomplete files
+    {
+        lock_guard<mutex> lock(peerMutex);
+        downloadingTopics.insert(topic);
+    }
+    
+    // The downloadFile method will append the received filenames to this base path
+    string topicPath = baseSavePath + "/" + topic;
+
+    // 5. Request and receive the topic (reusing existing FileTransfer logic)
+    {
+        lock_guard<mutex> lock(peerMutex);
+        cout << "Initiating download for topic '" << topic << "'...\n";
+    }
+    bool success = hostClient.downloadFile(topic, topicPath);
+    
+    {
+        lock_guard<mutex> lock(peerMutex);
+        downloadingTopics.erase(topic); // Remove from downloading set
+        if (success) 
+        {
+            cout << "Successfully downloaded entire topic '" << topic << "' to " << topicPath << "\n";
+        } 
+        else 
+        {
+            cerr << "ERROR: Failed to download topic '" << topic << "'. Transfer interrupted or invalid.\n";
+        }
+    }
+
+    // 6. Graceful Disconnect
+    hostClient.disconnect();
+    
+    return success;
+}
+
+// ==========================================
+// Register Topic with Tracker (Milestone 3.3)
+// ==========================================
+bool Client::registerTopic(const string& topic, const string& peerIP, int peerPort, const string& localDirectory)
+{
+    string request = "REGISTER_TOPIC " + topic + " " + peerIP + " " + to_string(peerPort) + " " + localDirectory + "\n";
+    
+    if (!sendMessage(request))
+    {
+        cerr << "ERROR: Failed to send REGISTER_TOPIC command to Tracker.\n";
+        return false;
+    }
+
+    string response = receiveMessage();
+    
+    // Remove newline if present
+    if (!response.empty() && response.back() == '\n') response.pop_back();
+
+    if (response == "REGISTER SUCCESS")
+    {
+        cout << "Successfully registered topic '" << topic << "' with Tracker as host " << peerIP << ":" << peerPort << "\n";
+        return true;
+    }
+    else
+    {
+        cerr << "ERROR: Failed to register topic. Tracker response: " << response << "\n";
+        return false;
+    }
+}
+
+// ==========================================
+// Start Serving Topics to Other Peers (Milestone 3.4)
+// ==========================================
+void Client::startServing(int port, const string& localDirectory)
+{
+    int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverSocket < 0)
+    {
+        cerr << "ERROR: Failed to create server socket for Peer.\n";
+        return;
+    }
+
+    int opt = 1;
+    if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+    {
+        cerr << "ERROR: Failed to set SO_REUSEADDR on Peer server socket.\n";
+    }
+
+    sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(port);
+    serverAddr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(serverSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0)
+    {
+        cerr << "ERROR: Failed to bind Peer server socket to port " << port << ".\n";
+        close(serverSocket);
+        return;
+    }
+
+    if (listen(serverSocket, 10) < 0)
+    {
+        cerr << "ERROR: Failed to listen on Peer server socket.\n";
+        close(serverSocket);
+        return;
+    }
+
+    cout << "\n[Peer Server] Listening for incoming peer connections on port " << port << "...\n";
+
+    // Multi-threading: Continuously accept in a detached background thread
+    thread(&Client::acceptPeerConnections, this, serverSocket, localDirectory).detach();
+}
+
+void Client::acceptPeerConnections(int serverSocket, const string& localDirectory)
+{
+    while (true)
+    {
+        sockaddr_in peerAddr;
+        socklen_t peerLen = sizeof(peerAddr);
+        int peerSocket = accept(serverSocket, (struct sockaddr*)&peerAddr, &peerLen);
+
+        if (peerSocket < 0)
+        {
+            cerr << "ERROR: Peer failed to accept incoming connection.\n";
+            continue;
+        }
+
+        // Multi-threading: Handle each requesting peer in an independent thread
+        try 
+        {
+            thread(&Client::handlePeerRequest, this, peerSocket, localDirectory).detach();
+        }
+        catch (const system_error& e)
+        {
+            cerr << "ERROR: Peer failed to create thread: " << e.what() << "\n";
+            close(peerSocket);
+        }
+    }
+}
+
+// Client Handling: Dedicated handler function
+void Client::handlePeerRequest(int peerSocket, const string& localDirectory)
+{
+    char buffer[1024];
+    memset(buffer, 0, sizeof(buffer));
+
+    int bytesReceived = recv(peerSocket, buffer, sizeof(buffer) - 1, 0);
+    if (bytesReceived <= 0)
+    {
+        close(peerSocket);
+        return;
+    }
+
+    string request(buffer);
+    stringstream ss(request);
+    string command, topic;
+    
+    // Reuse existing FileManager and FileTransfer modules natively
+    FileTransfer fileTransfer;
+    FileManager fileManager(localDirectory);
+
+    // Receive DOWNLOAD <topic> requests
+    if (ss >> command >> topic && command == "DOWNLOAD" && !topic.empty())
+    {
+        bool isDownloading = false;
+        {
+            lock_guard<mutex> lock(peerMutex);
+            cout << "\n[Peer Server] Received DOWNLOAD request for topic: " << topic << "\n";
+            isDownloading = (downloadingTopics.find(topic) != downloadingTopics.end());
+        }
+        
+        // Validate that the topic exists locally and is completely downloaded
+        if (!isDownloading && fileManager.topicExists(topic))
+        {
+            vector<string> files = fileManager.getFileList(topic);
+            
+            if (fileTransfer.sendMessage(peerSocket, "TOPIC FOUND\n") &&
+                fileTransfer.sendMessage(peerSocket, to_string(files.size()) + "\n"))
+            {
+                // Send all files belonging to the requested topic
+                bool transferSuccess = true;
+                for (const string& filename : files)
+                {
+                    string filePath = fileManager.getFilePath(topic, filename);
+                    long long fileSize = fileManager.getFileSize(filePath);
+                    
+                    if (!fileTransfer.sendMessage(peerSocket, filename + "\n") ||
+                        !fileTransfer.waitForACK(peerSocket) ||
+                        !fileTransfer.sendMessage(peerSocket, to_string(fileSize) + "\n") ||
+                        !fileTransfer.waitForACK(peerSocket) ||
+                        !fileTransfer.sendFile(peerSocket, filePath))
+                    {
+                        lock_guard<mutex> lock(peerMutex);
+                        cerr << "[Peer Server] ERROR: Interrupted while sending file " << filename << "\n";
+                        transferSuccess = false;
+                        break;
+                    }
+                }
+                
+                if (transferSuccess)
+                {
+                    fileTransfer.sendMessage(peerSocket, "END\n");
+                    lock_guard<mutex> lock(peerMutex);
+                    cout << "[Peer Server] Successfully sent topic '" << topic << "'\n";
+                }
+            }
+        }
+        else
+        {
+            lock_guard<mutex> lock(peerMutex);
+            if (isDownloading) {
+                cout << "[Peer Server] Requested topic '" << topic << "' is currently downloading. Rejected.\n";
+            } else {
+                cout << "[Peer Server] Requested topic '" << topic << "' not found locally.\n";
+            }
+            fileTransfer.sendMessage(peerSocket, "TOPIC NOT FOUND\n");
+        }
+    }
+    else
+    {
+        fileTransfer.sendMessage(peerSocket, "INVALID COMMAND\n");
+    }
+
+    // Close the socket after completion
+    close(peerSocket);
 }
 
 // ==========================================
