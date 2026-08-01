@@ -795,3 +795,83 @@ bool Client::downloadFileParallel(
     
     return true;
 }
+
+// ==========================================
+// Main Entry Point
+// ==========================================
+int main(int argc, char* argv[])
+{
+    string serverIP   = "127.0.0.1";
+    int    serverPort = 8080;
+
+    if (argc >= 2) serverIP   = argv[1];
+    if (argc >= 3) serverPort = atoi(argv[2]);
+
+    cout << "========================================\n";
+    cout << "         PeerShare Client\n";
+    cout << "========================================\n";
+    cout << "Server IP   : " << serverIP   << "\n";
+    cout << "Server Port : " << serverPort << "\n";
+    cout << "========================================\n\n";
+
+    Client client(serverIP, serverPort);
+
+    if (!client.connectToServer())
+    {
+        cerr << "ERROR: Could not connect to server at "
+             << serverIP << ":" << serverPort << "\n";
+        return 1;
+    }
+
+    cout << "Connected to server.\n\n";
+
+    string command;
+    while (true)
+    {
+        cout << "Commands: fetch <topic> | register <topic> <port> <dir> | serve <port> <dir> | quit\n> ";
+        if (!(cin >> command)) break;
+
+        if (command == "quit" || command == "exit")
+        {
+            client.disconnect();
+            cout << "Disconnected.\n";
+            break;
+        }
+        else if (command == "fetch")
+        {
+            string topic;
+            cin >> topic;
+            string savePath = "./downloads/" + topic;
+            cout << "Fetching topic '" << topic << "' -> " << savePath << "\n";
+            if (client.fetchTopic(topic, savePath))
+                cout << "Fetch complete.\n";
+            else
+                cerr << "Fetch failed.\n";
+        }
+        else if (command == "register")
+        {
+            string topic, localDir;
+            int peerPort;
+            cin >> topic >> peerPort >> localDir;
+            cout << "Registering topic '" << topic << "' ...\n";
+            if (client.registerTopic(topic, serverIP, peerPort, localDir))
+                cout << "Registered successfully.\n";
+            else
+                cerr << "Registration failed.\n";
+        }
+        else if (command == "serve")
+        {
+            int port;
+            string localDir;
+            cin >> port >> localDir;
+            cout << "Starting to serve on port " << port << " from " << localDir << " ...\n";
+            client.startServing(port, localDir);
+        }
+        else
+        {
+            cerr << "Unknown command: " << command << "\n";
+        }
+    }
+
+    return 0;
+}

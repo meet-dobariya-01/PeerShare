@@ -1,6 +1,24 @@
-# Ignore dataset directories
-Server/raw-img/
-Peer/downloads/
+# Ignore dataset directories & raw images
+raw-img/
+**/raw-img/
+dataset/
+**/dataset/
+
+# Ignore downloaded files
+downloads/
+**/downloads/
+
+# Ignore batch scripts and local helper tools
+trim_dataset.bat
+
+# Ignore compiled binaries and executables
+*.exe
+*.o
+*.out
+server
+client
+tracker
 
 # Ignore VS Code workspace settings
 .vscode/
+
