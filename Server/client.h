@@ -25,21 +25,6 @@ public:
     bool uploadFile(const string& filePath);
     bool downloadFile(const string& filename, const string& savePath);
     
-    // Structure to hold peer connection details for parallel downloading
-    struct PeerInfo {
-        string ip;
-        int port;
-    };
-
-    // Phase 2: Parallel chunk-based downloader
-    bool downloadFileParallel(
-        const string& topic,
-        const string& filename,
-        const string& savePath,
-        long long totalSize,
-        const vector<PeerInfo>& availablePeers
-    );
-
     // Milestone 3.1: Query Tracker for hosts
     struct HostInfo {
         string ip;

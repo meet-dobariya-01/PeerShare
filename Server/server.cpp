@@ -288,62 +288,6 @@ void Server::handlePeer(int clientSocket)
                 }
             }
         }
-        else if (command == "FILE_CHUNK_REQUEST")
-        {
-            string topic, filename;
-            long long offset, size;
-            
-            if (ss >> topic >> filename >> offset >> size)
-            {
-                {
-                    lock_guard<mutex> lock(serverMutex);
-                    cout << "\nRequested Chunk : " << filename << " (Offset: " << offset << ", Size: " << size << ")" << endl;
-                    cout << "Client IP and Port: " << peerIP << ":" << peerPort << endl;
-                }
-
-                string filePath = fileManager.getFilePath(topic, filename);
-                
-                // Validate requested chunk exists
-                if (fileManager.fileExists(filePath))
-                {
-                    long long actualFileSize = fileManager.getFileSize(filePath);
-                    if (offset >= 0 && size > 0 && offset + size <= actualFileSize)
-                    {
-                        if (fileTransfer.sendMessage(clientSocket, "CHUNK_DATA\n"))
-                        {
-                            if (fileTransfer.waitForACK(clientSocket))
-                            {
-                                if (!fileTransfer.sendChunk(clientSocket, filePath, offset, size))
-                                {
-                                    lock_guard<mutex> lock(serverMutex);
-                                    cout << "Chunk Transfer Failed\n";
-                                }
-                                else
-                                {
-                                    lock_guard<mutex> lock(serverMutex);
-                                    cout << "Chunk Transfer Completed\n";
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        fileTransfer.sendMessage(clientSocket, "INVALID_CHUNK\n");
-                    }
-                }
-                else
-                {
-                    fileTransfer.sendMessage(clientSocket, "FILE_NOT_FOUND\n");
-                }
-            }
-            else
-            {
-                if (!fileTransfer.sendMessage(clientSocket, "INVALID COMMAND\n")) 
-                {
-                    break;
-                }
-            }
-        }
         else if (command == "EXIT")
         {
             break;

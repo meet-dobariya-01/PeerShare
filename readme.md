@@ -1,284 +1,120 @@
-# Topic-Based P2P File Distribution with Tracker
+# PeerShare - Tracker-Based P2P File Distribution System
 
-## Overview
+A multi-threaded **Peer-to-Peer (P2P)** direct file distribution system built in C++17. 
 
-This project implements a **Tracker-Based Peer-to-Peer (P2P) File Distribution System** in C++.
-
-The system allows peers to request and share complete topic directories. A central Tracker maintains metadata about which hosts currently possess each topic, while the actual file transfer occurs directly between peers or between a server and peers.
-
-Initially, the server owns all topic directories. As peers download topics, they register themselves with the Tracker and become additional sources for those topics, reducing dependency on the central server.
+Peers can discover and download complete topic directories directly from other peers or a central seed server without intermediate file chunking.
 
 ---
 
-## Project Components
+## 💡 How It Works (Simple Concept)
 
-### Tracker
+1. **Tracker**: A lightweight directory server. It tracks which peers (IP & Port) own which topic folders. **It does not transfer any files.**
+2. **Server**: The initial seed host that owns all raw topic folders.
+3. **Peer**: Can act as a **Client** (to download topic folders) and as a **Server** (to serve downloaded topic folders to other peers).
 
-The Tracker is responsible for:
-
-- Maintaining the list of available topics.
-- Maintaining the mapping between topics and hosts.
-- Handling peer registration.
-- Returning available hosts for a requested topic.
-
-**The Tracker never transfers files.**
-
----
-
-### Server
-
-The Server:
-
-- Stores all topic directories.
-- Serves topic directories to requesting peers.
-- Handles multiple client requests using multithreading.
-
-Initially, every topic exists only on the server.
-
----
-
-### Peer
-
-A Peer acts as both:
-
-- **Client** (downloads topic directories)
-- **Server** (uploads downloaded topic directories)
-
-Workflow:
-
-1. Request a topic from the Tracker.
-2. Receive the list of available hosts.
-3. Download the topic from one host.
-4. Store the topic locally.
-5. Register with the Tracker.
-6. Serve the downloaded topic to future peers.
-
----
-
-## Communication Flow
-
-```text
-Peer
-   │
-   │ QUERY Topic
-   ▼
-Tracker
-   │
-   │ Host List
-   ▼
-Peer
-   │
-   │ DOWNLOAD Topic
-   ▼
-Server / Peer
-   │
-   │ Topic Files
-   ▼
-Peer
-   │
-   │ REGISTER_TOPIC
-   ▼
-Tracker
+```
+                     ┌──────────────────┐
+                     │     Tracker      │
+                     │  (Directory/IPs) │
+                     └────────▲─────────┘
+                              │
+               1. Query Topic │ 3. Register as Host
+                              │
+  ┌───────────────────────────┴───────────────────────────┐
+  │                                                       │
+┌─┴────────────┐          2. Direct File Download       ┌─┴────────────┐
+│    Peer 1    ├───────────────────────────────────────►│ Seed Server /│
+│   (Client)   │       (Full Direct TCP Stream)         │    Peer 2    │
+└──────────────┘                                        └──────────────┘
 ```
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ```text
-Topic-Based-P2P-File-Distribution/
-
+PeerShare/
 ├── Tracker/
-│   ├── Tracker.cpp / Tracker.h
-│   ├── Topic.cpp / Topic.h
-│   ├── Host.cpp / Host.h
-│   └── main.cpp
+│   ├── Host.cpp / Host.h        # Host IP & Port data structure
+│   ├── Topic.cpp / Topic.h      # Topic & Host listing logic
+│   ├── Tracker.cpp / Tracker.h  # Tracker database & lookup logic
+│   └── main.cpp                 # Tracker server entry point (Port 9000)
 │
 ├── Server/
-│   ├── server.cpp / server.h
-│   ├── client.cpp / client.h      (Peer implementation)
-│   ├── Filemanager.cpp / FileManager.h
-│   ├── FileTransfer.cpp / FileTransfer.h
-│   └── raw-img/
+│   ├── server.cpp / server.h    # Seed server implementation
+│   ├── client.cpp / client.h    # Peer client & P2P server implementation
+│   ├── FileManager.h / Filemanager.cpp # Directory & disk scanner
+│   ├── FileTransfer.h / FileTransfer.cpp # TCP Direct file sender/receiver
+│   ├── main.cpp                 # Seed server entry point
+│   └── raw-img/                 # Raw dataset folders (Cane, Gatto, etc.)
 │
 └── readme.md
 ```
 
 ---
 
-## Features
+## 🚀 Quick Start Guide
 
-- Tracker-based topic discovery
-- Multi-threaded Tracker
-- Multi-threaded Server
-- Multi-threaded Peer
-- Directory-based file transfer
-- Peer registration after download
-- Peer-to-peer file sharing
-- Linux socket programming in C++
-- TCP communication
+### Step 1: Build the Project
 
----
+Open your terminal in the `PeerShare` folder:
 
-## Technologies
-
-- C++17
-- POSIX/BSD Sockets
-- std::thread
-- std::mutex
-- std::filesystem
-- Linux (Ubuntu)
-
----
-
-## Demonstration
-
-1. Start the Tracker.
-2. Start the Server.
-3. Start Peer 1 and request a topic.
-4. Peer 1 downloads the topic and registers with the Tracker.
-5. Start Peer 2 and request the same topic.
-6. Peer 2 receives a list containing both the Server and Peer 1.
-7. Peer 2 can download the topic directly from Peer 1.
-
----
-
-## Objective
-
-The objective of this project is to demonstrate a tracker-based peer-to-peer file distribution system where peers cooperate in sharing topic directories instead of relying solely on a central server.
-
----
-
-## How to Run
-
-### Step 1: Clone the Repository
-
-```bash
-git clone <repository-url>
-cd Topic-Based-P2P-File-Distribution
-```
-
----
-
-### Step 2: Build the Tracker
-
+#### 1️⃣ Build the Tracker
 ```bash
 cd Tracker
-g++ -std=c++17 *.cpp -o tracker -pthread
+g++ -std=c++17 Host.cpp Topic.cpp Tracker.cpp main.cpp -o tracker -pthread
+cd ..
 ```
 
----
-
-### Step 3: Build the Server
-
+#### 2️⃣ Build the Seed Server
 ```bash
-cd ../Server
-g++ -std=c++17 server.cpp FileManager.cpp FileTransfer.cpp main.cpp -o server -pthread
+cd Server
+g++ -std=c++17 server.cpp Filemanager.cpp FileTransfer.cpp main.cpp -o server -pthread
 ```
 
----
-
-### Step 4: Build the Peer
-
+#### 3️⃣ Build the Peer Client
 ```bash
-g++ -std=c++17 client.cpp FileManager.cpp FileTransfer.cpp -o peer -pthread
+g++ -std=c++17 client.cpp Filemanager.cpp FileTransfer.cpp -o peer -pthread
+cd ..
 ```
-
-> **Note:** If your project uses additional source files, include them in the compilation command accordingly.
 
 ---
 
-### Step 5: Start the Tracker
+## 🏃 Running the System (Step-by-Step)
 
-Open a terminal:
-
+### Terminal 1: Run Tracker
 ```bash
 cd Tracker
 ./tracker
 ```
+*The Tracker starts listening on port `9000`.*
 
 ---
 
-### Step 6: Start the Server
-
-Open a second terminal:
-
+### Terminal 2: Run Seed Server
 ```bash
 cd Server
-./server
+./server 8080 ./raw-img
 ```
-
-The server will begin listening for peer requests.
+*The Server starts listening on port `8080` serving raw topic folders from `./raw-img`.*
 
 ---
 
-### Step 7: Start Peer 1
-
-Open a third terminal:
-
+### Terminal 3: Run Peer 1
 ```bash
 cd Server
-./peer
+./peer 127.0.0.1 9000
 ```
-
-Peer 1 can:
-- Query the Tracker for available topics.
-- Download a topic from the Server.
-- Register itself with the Tracker after a successful download.
-- Serve downloaded topics to other peers.
+#### Useful Peer Commands:
+- `fetch <topic>` — Downloads an entire topic directory (e.g. `fetch Cane`).
+- `register <topic> <port> <dir>` — Registers your peer with the Tracker so others can download from you.
+- `serve <port> <dir>` — Starts listening for incoming peer download requests.
+- `quit` — Disconnects from the network.
 
 ---
 
-### Step 8: Start Peer 2
+## 🛠️ Features & Design
 
-Open a fourth terminal:
-
-```bash
-cd Server
-./peer
-```
-
-Peer 2 can:
-- Query the Tracker.
-- Receive both the Server and Peer 1 as available hosts.
-- Download the topic from either source.
-
----
-
-### Expected Workflow
-
-```text
-Tracker
-   ▲
-   │
-   │ QUERY / REGISTER_TOPIC
-   │
-Peer 1 --------------------► Server
-   │                           │
-   │                           │
-   └──── Downloads Topic ◄─────┘
-   │
-   │ REGISTER_TOPIC
-   ▼
-Tracker
-
-Peer 2
-   │
-   │ QUERY
-   ▼
-Tracker
-   │
-   │ Host List (Server + Peer 1)
-   ▼
-Peer 2
-   │
-   │ DOWNLOAD
-   ▼
-Peer 1
-```
-
----
-
-### Stopping the Application
-
-Press **Ctrl + C** in each terminal to stop the Tracker, Server, and Peer processes.
+- **Direct File Streaming**: Whole files are transferred directly over raw TCP sockets without chunking overhead.
+- **Multi-Threaded Architecture**: Handles concurrent connections seamlessly using standard `std::thread` and `std::mutex`.
+- **Decentralized Sharing**: Once a peer downloads a topic, it can register with the Tracker to share it with new peers, reducing server load.

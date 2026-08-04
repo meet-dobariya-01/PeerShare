@@ -37,40 +37,7 @@ void Tracker::registerTopic(string topicName, const Host& host)
     }
 }
 
-// Register a chunk
-void Tracker::registerChunk(string topicName, string filename, const ChunkMetadata& chunk, const Host& host)
-{
-    if (topicDatabase.find(topicName) == topicDatabase.end())
-    {
-        Topic newTopic(topicName);
-        topicDatabase[topicName] = newTopic;
-    }
-    
-    topicDatabase[topicName].registerChunk(filename, chunk, host);
-    
-    cout << "Chunk " << chunk.chunk_id << " registered for " << filename 
-         << " under topic " << topicName << endl;
-}
 
-// Get peers for a specific chunk
-vector<Host> Tracker::getPeersForChunk(string topicName, string filename, int chunk_id)
-{
-    if (topicDatabase.find(topicName) != topicDatabase.end())
-    {
-        return topicDatabase[topicName].getPeersForChunk(filename, chunk_id);
-    }
-    return vector<Host>();
-}
-
-// Get chunk metadata for a file
-vector<ChunkMetadata> Tracker::getFileChunks(string topicName, string filename)
-{
-    if (topicDatabase.find(topicName) != topicDatabase.end())
-    {
-        return topicDatabase[topicName].getFileChunks(filename);
-    }
-    return vector<ChunkMetadata>();
-}
 
 // Lookup a topic
 bool Tracker::lookupTopic(string topicName)
@@ -110,7 +77,7 @@ vector<Host> Tracker::getHostsForTopic(string topicName)
 void Tracker::displayDatabase()
 {
     cout << "\n==============================" << endl;
-    cout << "     TRACKER DATABASE";
+    cout << "     TRACKER INFO.";
     cout << "\n==============================\n";
 
     if (topicDatabase.empty())
